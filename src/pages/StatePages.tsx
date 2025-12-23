@@ -117,7 +117,7 @@ const StatePage = () => {
             </div>
 
             <div className="container px-4 py-8">
-                {/* Quick Stats */}
+                {/* Quick Stats
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
                     <Card>
                         <CardContent className="pt-6">
@@ -159,7 +159,7 @@ const StatePage = () => {
                             </div>
                         </CardContent>
                     </Card>
-                </div>
+                </div> */}
 
                 {/* Assembly Constituencies List */}
                 <Card>
