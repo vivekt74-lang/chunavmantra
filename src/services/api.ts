@@ -403,8 +403,31 @@ export const apiService = {
             });
             const result = await response.json();
 
-            if (result.success) {
-                return result.data;
+            if (result.success && result.data) {
+                // Fix data types before returning
+                const fixedData = {
+                    ...result.data,
+                    booths: result.data.booths?.map((booth: any) => ({
+                        ...booth,
+                        total_electors: Number(booth.total_electors) || 0,
+                        total_votes_cast: Number(booth.total_votes_cast) || 0,
+                        male_voters: Number(booth.male_voters) || 0,
+                        female_voters: Number(booth.female_voters) || 0,
+                        turnout_percentage: parseFloat(booth.turnout_percentage) || 0,
+                        winning_votes: Number(booth.winning_votes) || 0
+                    })) || [],
+                    summary: result.data.summary ? {
+                        ...result.data.summary,
+                        total_booths: Number(result.data.summary.total_booths) || 0,
+                        avg_turnout: result.data.summary.avg_turnout !== null ?
+                            parseFloat(result.data.summary.avg_turnout) || 0 :
+                            result.data.booths?.reduce((sum: number, booth: any) =>
+                                sum + (parseFloat(booth.turnout_percentage) || 0), 0) / result.data.booths?.length || 0,
+                        total_electors: Number(result.data.summary.total_electors) || 0,
+                        total_votes: Number(result.data.summary.total_votes) || 0
+                    } : null
+                };
+                return fixedData;
             }
             throw new Error('Failed to compare booths');
         } catch (error) {
@@ -412,6 +435,8 @@ export const apiService = {
             throw error;
         }
     },
+
+
     getBoothTrends: async (boothId: number) => {
         try {
             const response = await fetch(`${BASE_URL}/api/booth-analysis/trends/${boothId}`);
