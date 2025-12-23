@@ -29,8 +29,8 @@ const Header = () => {
         {/* Logo */}
         <Link to="/" className="flex items-center gap-2 font-serif text-xl font-bold text-primary">
           <Vote className="h-7 w-7" />
-          <span className="hidden sm:inline">Election Insights India</span>
-          <span className="sm:hidden">EI India</span>
+          <span className="hidden sm:inline">Chunav Mantra</span>
+          <span className="sm:hidden">Chunav Mantra</span>
         </Link>
 
         {/* Desktop Navigation */}
