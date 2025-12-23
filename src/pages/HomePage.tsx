@@ -1,6 +1,6 @@
 // src/pages/HomePage.tsx
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import { ArrowRight, BarChart3, Users, Building2, TrendingUp, MapPin, Vote } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import StateSearchBar from "@/components/search/StateSearchBar";
@@ -18,6 +18,8 @@ const HomePage = () => {
     totalElections: 0,
     totalVoters: 0
   });
+
+  const navigate = useNavigate();
 
   useEffect(() => {
     const loadData = async () => {
@@ -43,9 +45,28 @@ const HomePage = () => {
     loadData();
   }, []);
 
-  const handleStateSelect = (state: State) => {
-    // Navigate to state page or dashboard with state selected
-    window.location.href = `/dashboard?state=${state.state_id}`;
+  const handleStateSelect = async (state: State) => {
+    try {
+      // Fetch complete state data using the getStateById API
+      const fullStateData = await apiService.getStateById(state.state_id);
+
+      // Navigate to the state detail page with full state data
+      navigate(`/state/${state.state_id}`, {
+        state: { stateData: fullStateData }
+      });
+
+      // Alternatively, if you have a dedicated dashboard for states:
+      // navigate(`/dashboard/state/${state.state_id}`, { 
+      //   state: { stateData: fullStateData } 
+      // });
+    } catch (error) {
+      console.error("Failed to fetch state details:", error);
+
+      // Fallback: navigate with basic state info if API call fails
+      navigate(`/state/${state.state_id}`, {
+        state: { stateData: state }
+      });
+    }
   };
 
   return (
