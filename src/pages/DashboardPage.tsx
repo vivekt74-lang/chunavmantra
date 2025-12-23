@@ -39,9 +39,15 @@ const DashboardPage = () => {
   // Load all states on initial mount
   useEffect(() => {
     const loadStates = async () => {
+      setStatesLoading(true);
       try {
         const statesData = await apiService.getStates();
-        setStates(statesData);
+        if (Array.isArray(statesData)) {
+          setStates(statesData);
+        } else {
+          setStates([]);
+          console.error('Invalid states data format:', statesData);
+        }
       } catch (error) {
         console.error("Failed to load states:", error);
         setStates([]);
@@ -49,10 +55,12 @@ const DashboardPage = () => {
         setStatesLoading(false);
       }
     };
+
     loadStates();
   }, []);
 
-  const handleStateSelect = async (state: State) => {
+  // Add handleStateSelect function
+  const handleStateSelect = (state: State) => {
     setSelectedState(state);
     setSelectedAssembly(null);
     setConstituencyStats(null);
@@ -61,7 +69,7 @@ const DashboardPage = () => {
     setHistoricalMLAs([]);
   };
 
-  // In DashboardPage.tsx - Update handleAssemblySelect function
+  // Handle assembly selection
   const handleAssemblySelect = async (assembly: AssemblyConstituency) => {
     setSelectedAssembly(assembly);
     setLoading(true);
@@ -252,7 +260,7 @@ const DashboardPage = () => {
             <StateSearchBar
               onStateSelect={handleStateSelect}
               placeholder={statesLoading ? "Loading states..." : "Search and select a state..."}
-              data={states} // Pass the loaded states data
+              data={states}
               className="w-full"
             />
           </div>

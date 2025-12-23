@@ -1,12 +1,14 @@
 // src/types/index.ts - Fixed with no duplicate definitions
+// src/types/index.ts
 export interface State {
     state_id: number;
     state_name: string;
+    state_code?: string;
+    total_constituencies?: number;
+    total_voters?: number;
     capital?: string;
     region?: string;
-    total_assemblies?: number;
-    population?: number;
-    area_sqkm?: number;
+    // Add any other properties your API returns
 }
 
 export interface AssemblyConstituency {
@@ -15,13 +17,12 @@ export interface AssemblyConstituency {
     state_id: number;
     state_name?: string;
     district: string;
-    parliament_seat: string;
+    parliament_seat?: string;
     category: 'GEN' | 'SC' | 'ST';
     total_voters: number;
     polling_booths: number;
-    area_sqkm?: number;
     reserved_for?: string;
-    created_at?: string;
+    booth_count?: number;
 }
 
 export interface Candidate {
@@ -214,3 +215,4 @@ export interface ClusterData {
     avg_electors: string;
     avg_turnout: string;
 }
+

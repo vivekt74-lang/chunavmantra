@@ -1,3 +1,4 @@
+// src/App.tsx - UPDATED
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -10,7 +11,7 @@ import ConstituencyPage from "./pages/ConstituencyPage";
 import NotFound from "./pages/NotFound";
 import BoothDetailsPage from './pages/BoothDetailsPage';
 import BoothAnalysisPage from "./pages/BoothAnalysisPage";
-
+import StatePage from "./pages/StatePages"; // You'll need to create this
 
 const queryClient = new QueryClient();
 
@@ -26,6 +27,7 @@ const App = () => (
             <Route path="/dashboard" element={<DashboardPage />} />
             <Route path="/constituency/:id" element={<ConstituencyPage />} />
             <Route path="/states" element={<DashboardPage />} />
+            <Route path="/state/:id" element={<StatePage />} /> {/* Add state route */}
             <Route path="/about" element={<HomePage />} />
             <Route path="/booth/:id" element={<BoothDetailsPage />} />
             <Route path="/constituency/:id/booth-analysis" element={<BoothAnalysisPage />} />

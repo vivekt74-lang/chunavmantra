@@ -45,27 +45,16 @@ const HomePage = () => {
     loadData();
   }, []);
 
+  // In HomePage.tsx - Update handleStateSelect function:
   const handleStateSelect = async (state: State) => {
     try {
-      // Fetch complete state data using the getStateById API
-      const fullStateData = await apiService.getStateById(state.state_id);
+      // Navigate directly to state page with state ID
+      navigate(`/state/${state.state_id}`);
 
-      // Navigate to the state detail page with full state data
-      navigate(`/state/${state.state_id}`, {
-        state: { stateData: fullStateData }
-      });
-
-      // Alternatively, if you have a dedicated dashboard for states:
-      // navigate(`/dashboard/state/${state.state_id}`, { 
-      //   state: { stateData: fullStateData } 
-      // });
+      // Remove the API call from here since StatePage will handle it
+      // This prevents duplicate API calls
     } catch (error) {
-      console.error("Failed to fetch state details:", error);
-
-      // Fallback: navigate with basic state info if API call fails
-      navigate(`/state/${state.state_id}`, {
-        state: { stateData: state }
-      });
+      console.error("Failed to navigate:", error);
     }
   };
 
