@@ -12,6 +12,7 @@ import NotFound from "./pages/NotFound";
 import BoothDetailsPage from './pages/BoothDetailsPage';
 import BoothAnalysisPage from "./pages/BoothAnalysisPage";
 import StatePage from "./pages/StatePages"; // You'll need to create this
+import BoothComparisonPage from "@/pages/BoothComparisonPage";
 
 const queryClient = new QueryClient();
 
@@ -31,8 +32,7 @@ const App = () => (
             <Route path="/about" element={<HomePage />} />
             <Route path="/booth/:id" element={<BoothDetailsPage />} />
             <Route path="/constituency/:id/booth-analysis" element={<BoothAnalysisPage />} />
-
-            {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+            <Route path="/constituency/:id/compare-booths" element={<BoothComparisonPage />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </Layout>

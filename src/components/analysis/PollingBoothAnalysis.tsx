@@ -1,7 +1,6 @@
-// src/components/analysis/PollingBoothAnalysis.tsx
+// src/components/analysis/PollingBoothAnalysis.tsx - Updated
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
-import { Search, Filter, Download, ChevronRight, Building2, Users, TrendingUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -9,6 +8,26 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { apiService } from "@/services/api";
 import PartyBadge from "@/components/ui/PartyBadge";
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from "@/components/ui/select";
+import {
+    Search,
+    Filter,
+    Download,
+    ChevronRight,
+    Building2,
+    Users,
+    TrendingUp,
+    AlertCircle,
+    Trophy,
+    BarChart3,
+    RefreshCw
+} from "lucide-react";
 
 interface PollingBoothAnalysisProps {
     constituencyId: number;
@@ -17,47 +36,82 @@ interface PollingBoothAnalysisProps {
 
 const PollingBoothAnalysis = ({ constituencyId, constituencyName }: PollingBoothAnalysisProps) => {
     const [loading, setLoading] = useState(true);
+    const [analysisData, setAnalysisData] = useState<any>(null);
     const [booths, setBooths] = useState<any[]>([]);
     const [searchQuery, setSearchQuery] = useState("");
     const [currentPage, setCurrentPage] = useState(1);
     const [totalPages, setTotalPages] = useState(1);
     const [error, setError] = useState<string | null>(null);
+    const [filterParty, setFilterParty] = useState<string>("all");
+    const [filterTurnout, setFilterTurnout] = useState<string>("all");
 
-    const loadBooths = async (page: number = 1) => {
+    const loadData = async () => {
         setLoading(true);
         setError(null);
-        try {
-            const result = await apiService.getConstituencyBooths(constituencyId, page, 10);
 
-            if (result.success) {
-                setBooths(Array.isArray(result.data) ? result.data : []);
-                setTotalPages(result.meta?.totalPages || 1);
-            } else {
-                setError(result.error || 'Failed to load booth data');
-                setBooths([]);
+        try {
+            // Load both booth analysis and individual booths
+            const [analysis, boothsData] = await Promise.all([
+                apiService.getBoothAnalysis(constituencyId),
+                apiService.getConstituencyBooths(constituencyId, currentPage, 10)
+            ]);
+
+            setAnalysisData(analysis);
+            setBooths(Array.isArray(boothsData.data) ? boothsData.data : []);
+
+            if (boothsData.meta) {
+                setTotalPages(boothsData.meta.totalPages || 1);
             }
+
         } catch (error) {
-            console.error('Error loading booths:', error);
+            console.error('Error loading booth data:', error);
             setError('Failed to load booth analysis data');
             setBooths([]);
+            setAnalysisData(null);
         } finally {
             setLoading(false);
         }
     };
 
     useEffect(() => {
-        loadBooths(currentPage);
+        loadData();
     }, [constituencyId, currentPage]);
 
     const filteredBooths = booths.filter(booth => {
-        if (!searchQuery.trim()) return true;
+        // Search filter
+        if (searchQuery.trim()) {
+            const query = searchQuery.toLowerCase();
+            if (!(
+                booth.booth_name?.toLowerCase().includes(query) ||
+                booth.booth_number?.toString().includes(query) ||
+                booth.winning_party?.toLowerCase().includes(query)
+            )) {
+                return false;
+            }
+        }
 
-        const query = searchQuery.toLowerCase();
-        return (
-            booth.booth_name?.toLowerCase().includes(query) ||
-            booth.booth_number?.toString().includes(query) ||
-            booth.winning_party?.toLowerCase().includes(query)
-        );
+        // Party filter
+        if (filterParty !== "all" && booth.winning_party !== filterParty) {
+            return false;
+        }
+
+        // Turnout filter
+        if (filterTurnout !== "all") {
+            const turnout = parseFloat(booth.turnout_percentage || booth.booth_turnout || 0);
+            switch (filterTurnout) {
+                case "high":
+                    if (turnout < 70) return false;
+                    break;
+                case "medium":
+                    if (turnout < 50 || turnout >= 70) return false;
+                    break;
+                case "low":
+                    if (turnout >= 50) return false;
+                    break;
+            }
+        }
+
+        return true;
     });
 
     const formatNumber = (num: number) => {
@@ -69,6 +123,12 @@ const PollingBoothAnalysis = ({ constituencyId, constituencyName }: PollingBooth
         if (turnout >= 50) return <Badge variant="outline" className="text-yellow-700 border-yellow-300">Medium</Badge>;
         return <Badge variant="destructive" className="bg-red-100 text-red-800 hover:bg-red-100">Low</Badge>;
     };
+
+    // Extract unique parties for filter
+    const uniqueParties = Array.from(new Set(booths
+        .map(b => b.winning_party)
+        .filter(Boolean)
+    )).sort();
 
     if (loading && booths.length === 0) {
         return (
@@ -82,9 +142,9 @@ const PollingBoothAnalysis = ({ constituencyId, constituencyName }: PollingBooth
     if (error && booths.length === 0) {
         return (
             <div className="text-center py-8">
-                <Building2 className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                <AlertCircle className="h-12 w-12 text-destructive mx-auto mb-4" />
                 <p className="text-destructive mb-4">{error}</p>
-                <Button onClick={() => loadBooths(currentPage)} variant="outline">
+                <Button onClick={loadData} variant="outline">
                     Retry
                 </Button>
             </div>
@@ -94,84 +154,170 @@ const PollingBoothAnalysis = ({ constituencyId, constituencyName }: PollingBooth
     return (
         <div className="space-y-6">
             {/* Search and Filter Section */}
-            <div className="flex flex-col md:flex-row gap-4 items-start md:items-center justify-between">
-                <div className="flex-1">
-                    <div className="relative max-w-sm">
-                        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                        <Input
-                            placeholder="Search booths by name or number..."
-                            value={searchQuery}
-                            onChange={(e) => setSearchQuery(e.target.value)}
-                            className="pl-10"
-                        />
+            <div className="flex flex-col gap-4">
+                <div className="flex flex-col md:flex-row gap-4 items-start md:items-center justify-between">
+                    <div className="flex-1">
+                        <div className="relative max-w-sm">
+                            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                            <Input
+                                placeholder="Search booths by name, number, or party..."
+                                value={searchQuery}
+                                onChange={(e) => setSearchQuery(e.target.value)}
+                                className="pl-10"
+                            />
+                        </div>
+                    </div>
+                    <div className="flex gap-2">
+                        <Button variant="outline" size="sm" onClick={loadData}>
+                            <RefreshCw className="h-4 w-4 mr-2" />
+                            Refresh
+                        </Button>
+                        <Button variant="outline" size="sm">
+                            <Download className="h-4 w-4 mr-2" />
+                            Export
+                        </Button>
                     </div>
                 </div>
-                <div className="flex gap-2">
-                    <Button variant="outline" size="sm">
-                        <Filter className="h-4 w-4 mr-2" />
-                        Filter
-                    </Button>
-                    <Button variant="outline" size="sm">
-                        <Download className="h-4 w-4 mr-2" />
-                        Export
-                    </Button>
+
+                {/* Filter Controls */}
+                <div className="flex flex-wrap gap-4">
+                    <div className="w-full sm:w-auto">
+                        <Select value={filterParty} onValueChange={setFilterParty}>
+                            <SelectTrigger className="w-[180px]">
+                                <SelectValue placeholder="Filter by party" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="all">All Parties</SelectItem>
+                                {uniqueParties.map(party => (
+                                    <SelectItem key={party} value={party}>{party}</SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                    </div>
+                    <div className="w-full sm:w-auto">
+                        <Select value={filterTurnout} onValueChange={setFilterTurnout}>
+                            <SelectTrigger className="w-[180px]">
+                                <SelectValue placeholder="Filter by turnout" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="all">All Turnout</SelectItem>
+                                <SelectItem value="high">High (≥70%)</SelectItem>
+                                <SelectItem value="medium">Medium (50-69%)</SelectItem>
+                                <SelectItem value="low">Low (&lt;50%)</SelectItem>
+                            </SelectContent>
+                        </Select>
+                    </div>
                 </div>
             </div>
 
-            {/* Stats Overview */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            {/* Analysis Summary Cards */}
+            {analysisData && (
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <Card>
+                        <CardContent className="pt-6">
+                            <div className="text-center">
+                                <Building2 className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
+                                <p className="text-sm text-muted-foreground">Total Booths</p>
+                                <p className="text-2xl font-bold">{analysisData.summary?.total_booths || booths.length}</p>
+                            </div>
+                        </CardContent>
+                    </Card>
+                    <Card>
+                        <CardContent className="pt-6">
+                            <div className="text-center">
+                                <Users className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
+                                <p className="text-sm text-muted-foreground">Total Voters</p>
+                                <p className="text-2xl font-bold">
+                                    {formatNumber(analysisData.summary?.total_electors || 0)}
+                                </p>
+                            </div>
+                        </CardContent>
+                    </Card>
+                    <Card>
+                        <CardContent className="pt-6">
+                            <div className="text-center">
+                                <TrendingUp className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
+                                <p className="text-sm text-muted-foreground">Avg Turnout</p>
+                                <p className="text-2xl font-bold">
+                                    {analysisData.summary?.avg_turnout ? `${analysisData.summary.avg_turnout}%` : 'N/A'}
+                                </p>
+                            </div>
+                        </CardContent>
+                    </Card>
+                    <Card>
+                        <CardContent className="pt-6">
+                            <div className="text-center">
+                                <Trophy className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
+                                <p className="text-sm text-muted-foreground">Leading Party</p>
+                                <p className="text-2xl font-bold truncate">
+                                    {analysisData.party_dominance?.[0]?.party_name?.substring(0, 12) || "N/A"}
+                                </p>
+                            </div>
+                        </CardContent>
+                    </Card>
+                </div>
+            )}
+
+            {/* Party Dominance Summary */}
+            {analysisData?.party_dominance && analysisData.party_dominance.length > 0 && (
                 <Card>
-                    <CardContent className="pt-6">
-                        <div className="text-center">
-                            <Building2 className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
-                            <p className="text-sm text-muted-foreground">Total Booths</p>
-                            <p className="text-2xl font-bold">{booths.length}</p>
+                    <CardHeader>
+                        <CardTitle>Party Dominance</CardTitle>
+                        <p className="text-sm text-muted-foreground">Parties leading across polling booths</p>
+                    </CardHeader>
+                    <CardContent>
+                        <div className="space-y-4">
+                            {analysisData.party_dominance.slice(0, 5).map((party: any, index: number) => (
+                                <div key={party.party_name} className="space-y-2">
+                                    <div className="flex items-center justify-between">
+                                        <div className="flex items-center gap-3">
+                                            <PartyBadge party={party.party_name} />
+                                            <span className="text-sm text-muted-foreground">
+                                                {party.booths_won} booths
+                                            </span>
+                                        </div>
+                                        <span className="text-sm font-semibold">
+                                            {analysisData.summary?.total_booths
+                                                ? `${((party.booths_won / analysisData.summary.total_booths) * 100).toFixed(1)}%`
+                                                : '0%'
+                                            }
+                                        </span>
+                                    </div>
+                                    <div className="w-full h-3 bg-muted rounded-full overflow-hidden">
+                                        <div
+                                            className="h-full rounded-full"
+                                            style={{
+                                                width: `${analysisData.summary?.total_booths
+                                                    ? (party.booths_won / analysisData.summary.total_booths) * 100
+                                                    : 0}%`,
+                                                backgroundColor: index === 0 ? '#10b981' :
+                                                    index === 1 ? '#3b82f6' :
+                                                        index === 2 ? '#f59e0b' : '#6b7280'
+                                            }}
+                                        />
+                                    </div>
+                                </div>
+                            ))}
                         </div>
                     </CardContent>
                 </Card>
-                <Card>
-                    <CardContent className="pt-6">
-                        <div className="text-center">
-                            <Users className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
-                            <p className="text-sm text-muted-foreground">Average Voters</p>
-                            <p className="text-2xl font-bold">
-                                {formatNumber(Math.round(booths.reduce((acc, booth) => acc + (booth.total_electors || 0), 0) / booths.length))}
-                            </p>
-                        </div>
-                    </CardContent>
-                </Card>
-                <Card>
-                    <CardContent className="pt-6">
-                        <div className="text-center">
-                            <TrendingUp className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
-                            <p className="text-sm text-muted-foreground">Avg Turnout</p>
-                            <p className="text-2xl font-bold">
-                                {booths.length > 0
-                                    ? `${(booths.reduce((acc, booth) => acc + parseFloat(booth.booth_turnout || booth.turnout_percentage || 0), 0) / booths.length).toFixed(1)}%`
-                                    : '0%'
-                                }
-                            </p>
-                        </div>
-                    </CardContent>
-                </Card>
-                <Card>
-                    <CardContent className="pt-6">
-                        <div className="text-center">
-                            <ChevronRight className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
-                            <p className="text-sm text-muted-foreground">Analysis Ready</p>
-                            <p className="text-2xl font-bold text-green-600">✓</p>
-                        </div>
-                    </CardContent>
-                </Card>
-            </div>
+            )}
 
             {/* Booths Table */}
             <Card>
                 <CardHeader>
-                    <CardTitle>Polling Booth Analysis</CardTitle>
-                    <p className="text-sm text-muted-foreground">
-                        Detailed analysis of {constituencyName ? `booths in ${constituencyName}` : 'all polling booths'}
-                    </p>
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                        <div>
+                            <CardTitle>Polling Booths</CardTitle>
+                            <p className="text-sm text-muted-foreground">
+                                {filteredBooths.length} of {booths.length} booths showing
+                                {constituencyName && ` in ${constituencyName}`}
+                            </p>
+                        </div>
+                        <Badge variant="outline" className="w-fit">
+                            Page {currentPage} of {totalPages}
+                        </Badge>
+                    </div>
                 </CardHeader>
                 <CardContent>
                     {filteredBooths.length > 0 ? (
@@ -180,12 +326,12 @@ const PollingBoothAnalysis = ({ constituencyId, constituencyName }: PollingBooth
                                 <Table>
                                     <TableHeader>
                                         <TableRow>
-                                            <TableHead>Booth No.</TableHead>
-                                            <TableHead>Booth Name</TableHead>
-                                            <TableHead>Total Voters</TableHead>
-                                            <TableHead>Turnout</TableHead>
-                                            <TableHead>Winning Party</TableHead>
-                                            <TableHead className="text-right">Actions</TableHead>
+                                            <TableHead className="w-20">Booth No.</TableHead>
+                                            <TableHead className="min-w-[200px]">Booth Name</TableHead>
+                                            <TableHead className="w-24">Voters</TableHead>
+                                            <TableHead className="w-32">Turnout</TableHead>
+                                            <TableHead className="w-40">Winning Party</TableHead>
+                                            <TableHead className="w-32 text-right">Actions</TableHead>
                                         </TableRow>
                                     </TableHeader>
                                     <TableBody>
@@ -194,16 +340,25 @@ const PollingBoothAnalysis = ({ constituencyId, constituencyName }: PollingBooth
                                                 <TableCell className="font-mono font-medium">
                                                     {booth.booth_number || 'N/A'}
                                                 </TableCell>
-                                                <TableCell className="max-w-xs truncate">
-                                                    {booth.booth_name || `Booth ${booth.booth_number}`}
+                                                <TableCell className="max-w-xs">
+                                                    <div className="truncate" title={booth.booth_name}>
+                                                        {booth.booth_name || `Booth ${booth.booth_number}`}
+                                                    </div>
                                                 </TableCell>
                                                 <TableCell>
                                                     {formatNumber(booth.total_electors || 0)}
                                                 </TableCell>
                                                 <TableCell>
                                                     <div className="flex items-center gap-2">
-                                                        {booth.booth_turnout ? `${parseFloat(booth.booth_turnout).toFixed(1)}%` : 'N/A'}
-                                                        {booth.booth_turnout && getTurnoutBadge(parseFloat(booth.booth_turnout))}
+                                                        <span>
+                                                            {booth.turnout_percentage ?
+                                                                `${parseFloat(booth.turnout_percentage).toFixed(1)}%` :
+                                                                booth.booth_turnout ?
+                                                                    `${parseFloat(booth.booth_turnout).toFixed(1)}%` :
+                                                                    'N/A'
+                                                            }
+                                                        </span>
+                                                        {booth.turnout_percentage && getTurnoutBadge(parseFloat(booth.turnout_percentage))}
                                                     </div>
                                                 </TableCell>
                                                 <TableCell>
@@ -214,11 +369,18 @@ const PollingBoothAnalysis = ({ constituencyId, constituencyName }: PollingBooth
                                                     )}
                                                 </TableCell>
                                                 <TableCell className="text-right">
-                                                    <Button size="sm" variant="ghost" asChild>
-                                                        <Link to={`/booth/${booth.booth_id || booth.booth_number}`}>
-                                                            View Details
-                                                        </Link>
-                                                    </Button>
+                                                    <div className="flex justify-end gap-2">
+                                                        <Button size="sm" variant="ghost" asChild>
+                                                            <Link to={`/booth/${booth.booth_id || booth.booth_number}`}>
+                                                                View Details
+                                                            </Link>
+                                                        </Button>
+                                                        <Button size="sm" variant="outline" asChild>
+                                                            <Link to={`/booth/${booth.booth_id || booth.booth_number}/analysis`}>
+                                                                Analysis
+                                                            </Link>
+                                                        </Button>
+                                                    </div>
                                                 </TableCell>
                                             </TableRow>
                                         ))}
@@ -253,18 +415,35 @@ const PollingBoothAnalysis = ({ constituencyId, constituencyName }: PollingBooth
                         <div className="text-center py-8">
                             <Building2 className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
                             <p className="text-muted-foreground">
-                                {searchQuery ? 'No booths match your search' : 'No booth data available'}
+                                {searchQuery || filterParty !== "all" || filterTurnout !== "all"
+                                    ? 'No booths match your filters'
+                                    : 'No booth data available'}
                             </p>
+                            {(searchQuery || filterParty !== "all" || filterTurnout !== "all") && (
+                                <Button
+                                    variant="outline"
+                                    className="mt-4"
+                                    onClick={() => {
+                                        setSearchQuery("");
+                                        setFilterParty("all");
+                                        setFilterTurnout("all");
+                                    }}
+                                >
+                                    Clear Filters
+                                </Button>
+                            )}
                         </div>
                     )}
                 </CardContent>
             </Card>
 
-            {/* CTA */}
+            {/* CTA to Advanced Analysis */}
             <div className="text-center">
-                <Button asChild variant="outline">
+                <Button asChild variant="default" size="lg">
                     <Link to={`/constituency/${constituencyId}/booth-analysis`}>
+                        <BarChart3 className="mr-2 h-5 w-5" />
                         View Advanced Booth Analysis
+                        <ChevronRight className="ml-2 h-5 w-5" />
                     </Link>
                 </Button>
             </div>

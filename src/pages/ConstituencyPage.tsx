@@ -18,6 +18,7 @@ import {
   Target,
   BarChart3
 } from "lucide-react";
+import { GitCompare } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -185,6 +186,12 @@ const ConstituencyPage = () => {
               </div>
             </div>
             <div className="flex gap-2">
+              <Button variant="outline" size="sm" asChild>
+                <Link to={`/constituency/${constituency.constituency_id}/compare-booths`}>
+                  <GitCompare className="h-4 w-4 mr-2" />
+                  Compare Booths
+                </Link>
+              </Button>
               <Button variant="outline" size="sm" asChild>
                 <Link to={`/constituency/${constituency.constituency_id}/booth-analysis`}>
                   <BarChart3 className="h-4 w-4 mr-2" />

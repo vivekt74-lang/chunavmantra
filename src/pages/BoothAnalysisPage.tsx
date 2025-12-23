@@ -12,7 +12,9 @@ import {
     Download,
     Share2,
     Building2,
-    MapPin
+    MapPin,
+    GitCompare,
+    Trophy
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -29,37 +31,46 @@ const BoothAnalysisPage = () => {
     const [clustersData, setClustersData] = useState<any>(null);
     const [recommendations, setRecommendations] = useState<any>(null);
     const [demographics, setDemographics] = useState<any>(null);
+    const [heatmapData, setHeatmapData] = useState<any>(null);
+    const [partyPerformanceData, setPartyPerformanceData] = useState<any>(null);
 
     useEffect(() => {
         loadAnalysisData();
     }, [id]);
 
-    // Update the loadAnalysisData function in BoothAnalysisPage.tsx
     const loadAnalysisData = async () => {
         if (!id) return;
 
         setLoading(true);
         try {
-            // Load only essential data first
-            const [analysis, clusters, recs, demos] = await Promise.allSettled([
+            // Load all analysis data in parallel
+            const [analysis, clusters, recs, demos, heatmap, partyPerformance] = await Promise.allSettled([
                 apiService.getBoothAnalysis(parseInt(id)),
                 apiService.getBoothClusters(parseInt(id)),
                 apiService.getBoothRecommendations(parseInt(id)),
-                apiService.getDemographicAnalysis(parseInt(id))
+                apiService.getDemographicAnalysis(parseInt(id)),
+                apiService.getHeatmapData(parseInt(id), 'turnout'),
+                apiService.getPartyPerformance(parseInt(id), 'Samajwadi Party')
             ]);
 
-            // Handle results (some may fail)
+            // Handle all results
             setAnalysisData(
-                analysis.status === 'fulfilled' ? analysis.value?.data : null
+                analysis.status === 'fulfilled' ? analysis.value : null
             );
             setClustersData(
-                clusters.status === 'fulfilled' ? clusters.value?.data : null
+                clusters.status === 'fulfilled' ? clusters.value : null
             );
             setRecommendations(
-                recs.status === 'fulfilled' ? recs.value?.data : null
+                recs.status === 'fulfilled' ? recs.value : null
             );
             setDemographics(
-                demos.status === 'fulfilled' ? demos.value?.data : null
+                demos.status === 'fulfilled' ? demos.value : null
+            );
+            setHeatmapData(
+                heatmap.status === 'fulfilled' ? heatmap.value : null
+            );
+            setPartyPerformanceData(
+                partyPerformance.status === 'fulfilled' ? partyPerformance.value : null
             );
 
         } catch (error) {
@@ -114,6 +125,12 @@ const BoothAnalysisPage = () => {
                             </div>
                         </div>
                         <div className="flex gap-2">
+                            <Button variant="outline" size="sm" asChild>
+                                <Link to={`/constituency/${id}/compare-booths`}>
+                                    <GitCompare className="h-4 w-4 mr-2" />
+                                    Compare Booths
+                                </Link>
+                            </Button>
                             <Button variant="outline" size="sm">
                                 <Share2 className="h-4 w-4 mr-2" />
                                 Share
@@ -130,12 +147,13 @@ const BoothAnalysisPage = () => {
             <div className="container px-4 py-8">
                 {/* Analysis Tabs */}
                 <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-                    <TabsList className="grid grid-cols-2 md:grid-cols-5 gap-2">
+                    <TabsList className="grid grid-cols-2 md:grid-cols-6 gap-2">
                         <TabsTrigger value="overview">Overview</TabsTrigger>
                         <TabsTrigger value="clusters">Booth Clusters</TabsTrigger>
                         <TabsTrigger value="recommendations">Recommendations</TabsTrigger>
                         <TabsTrigger value="demographics">Demographics</TabsTrigger>
-                        <TabsTrigger value="comparison">Compare Booths</TabsTrigger>
+                        <TabsTrigger value="heatmap">Heatmap</TabsTrigger>
+                        <TabsTrigger value="comparison">Compare</TabsTrigger>
                     </TabsList>
 
                     {/* Overview Tab */}
@@ -285,7 +303,6 @@ const BoothAnalysisPage = () => {
                     </TabsContent>
 
                     {/* Recommendations Tab */}
-
                     <TabsContent value="recommendations" className="space-y-6">
                         {recommendations?.recommendations?.slice(0, 10).map((rec: any, index: number) => (
                             <Card key={index}>
@@ -322,7 +339,7 @@ const BoothAnalysisPage = () => {
                                         </div>
                                     </div>
                                     <p className="mt-4 text-sm text-muted-foreground">
-                                        <strong>Strategy:</strong> {rec.strategy_suggestion}
+                                        <strong>Strategy:</strong> {rec.strategy_suggestion || 'Focus on voter engagement and mobilization.'}
                                     </p>
                                     <Button variant="outline" size="sm" className="mt-4" asChild>
                                         <Link to={`/booth/${rec.booth_id}`}>
@@ -395,6 +412,92 @@ const BoothAnalysisPage = () => {
                                 </Card>
                             </>
                         )}
+                    </TabsContent>
+
+                    {/* Heatmap Tab */}
+                    <TabsContent value="heatmap" className="space-y-6">
+                        {heatmapData ? (
+                            <>
+                                <Card>
+                                    <CardHeader>
+                                        <CardTitle>Booth Heatmap</CardTitle>
+                                        <p className="text-sm text-muted-foreground">
+                                            Visual representation of booth intensity based on {heatmapData.metadata?.metric || 'turnout'}
+                                        </p>
+                                    </CardHeader>
+                                    <CardContent>
+                                        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
+                                            {heatmapData.heatmap?.slice(0, 24).map((booth: any, index: number) => (
+                                                <div
+                                                    key={index}
+                                                    className="p-4 rounded-lg border text-center"
+                                                    style={{
+                                                        backgroundColor: `rgba(59, 130, 246, ${booth.normalized_intensity / 100})`,
+                                                        borderColor: `rgba(59, 130, 246, ${0.3 + (booth.normalized_intensity / 100) * 0.7})`
+                                                    }}
+                                                >
+                                                    <p className="font-bold text-white text-shadow">
+                                                        Booth {booth.booth_number}
+                                                    </p>
+                                                    <p className="text-xs text-white/90">
+                                                        {booth.turnout_percentage?.toFixed(1)}% turnout
+                                                    </p>
+                                                </div>
+                                            ))}
+                                        </div>
+                                        <div className="mt-6 p-4 bg-muted/50 rounded-lg">
+                                            <div className="flex items-center justify-between">
+                                                <div>
+                                                    <p className="text-sm font-medium">Intensity Legend</p>
+                                                    <p className="text-xs text-muted-foreground">
+                                                        Color intensity represents {heatmapData.metadata?.metric || 'turnout'} level
+                                                    </p>
+                                                </div>
+                                                <div className="flex items-center gap-2">
+                                                    <span className="text-xs">Low</span>
+                                                    <div className="w-32 h-4 bg-gradient-to-r from-blue-100 via-blue-300 to-blue-600 rounded"></div>
+                                                    <span className="text-xs">High</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </CardContent>
+                                </Card>
+                            </>
+                        ) : (
+                            <div className="text-center py-12">
+                                <MapPin className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
+                                <p className="text-muted-foreground">Heatmap data not available</p>
+                            </div>
+                        )}
+                    </TabsContent>
+
+                    {/* Comparison Tab */}
+                    <TabsContent value="comparison" className="space-y-6">
+                        <Card>
+                            <CardHeader>
+                                <CardTitle>Compare Multiple Booths</CardTitle>
+                                <p className="text-sm text-muted-foreground">
+                                    Compare performance metrics across multiple polling booths
+                                </p>
+                            </CardHeader>
+                            <CardContent>
+                                <div className="text-center py-8">
+                                    <GitCompare className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
+                                    <h3 className="text-xl font-semibold text-foreground mb-2">
+                                        Advanced Booth Comparison
+                                    </h3>
+                                    <p className="text-muted-foreground max-w-md mx-auto mb-6">
+                                        Use our dedicated booth comparison tool to analyze and compare multiple booths side by side.
+                                    </p>
+                                    <Button asChild size="lg">
+                                        <Link to={`/constituency/${id}/compare-booths`}>
+                                            <GitCompare className="mr-2 h-5 w-5" />
+                                            Open Comparison Tool
+                                        </Link>
+                                    </Button>
+                                </div>
+                            </CardContent>
+                        </Card>
                     </TabsContent>
                 </Tabs>
             </div>

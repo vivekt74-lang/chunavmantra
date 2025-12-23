@@ -12,7 +12,7 @@ import type {
     ApiResponse
 } from '../types';
 
-const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+const BASE_URL = import.meta.env.VITE_API_URL || 'https://chunavmantra-backend.onrender.com';
 
 const handleResponse = async <T>(response: Response): Promise<ApiResponse<T>> => {
     if (!response.ok) {
@@ -101,18 +101,18 @@ export const apiService = {
     getBoothDetails: async (boothId: number) => {
         try {
             const response = await fetch(`${BASE_URL}/api/booths/${boothId}`);
-            const data = await response.json();
+            const result = await response.json();
 
-            if (!data.success) {
-                throw new Error(data.error || 'Failed to fetch booth details');
+            if (result.success) {
+                return result.data;
             }
-
-            return data.data;
+            throw new Error('Booth not found');
         } catch (error) {
-            console.error('API Error in getBoothDetails:', error);
+            console.error('Error fetching booth details:', error);
             throw error;
         }
     },
+
 
     // Elections
     getElectionResults: async (constituencyId: number, year = 2022): Promise<ElectionResult[]> => {
@@ -222,14 +222,19 @@ export const apiService = {
         return await apiFetch<Booth>(`${BASE_URL}/api/booths/${id}`);
     },
 
-    getBoothResults: async (boothId: number, year = 2022) => {
-        const response = await fetch(`${BASE_URL}/api/booths/${boothId}/results`);
-        const result = await response.json();
+    getBoothResults: async (boothId: number) => {
+        try {
+            const response = await fetch(`${BASE_URL}/api/booths/${boothId}/results`);
+            const result = await response.json();
 
-        if (result.success) {
-            return result.data;
+            if (result.success) {
+                return result.data;
+            }
+            return [];
+        } catch (error) {
+            console.error('Error fetching booth results:', error);
+            throw error;
         }
-        throw new Error('Failed to fetch booth results');
     },
 
     // Search
@@ -246,18 +251,13 @@ export const apiService = {
         return await apiFetch<any>(`${BASE_URL}/api/stats/dashboard`);
     },
 
-    // Booth Analysis Endpoints (using your actual backend endpoints)
     getPartyPerformance: async (constituencyId: number, partyName: string) => {
         try {
-            const response = await fetch(`${BASE_URL}/api/constituencies/${constituencyId}/booth-analysis`);
+            const response = await fetch(`${BASE_URL}/api/booth-analysis/party-performance/${constituencyId}/${encodeURIComponent(partyName)}`);
             const result = await response.json();
 
             if (result.success) {
-                // Filter for the specific party
-                const partyData = result.data.party_dominance?.find((p: any) =>
-                    p.party_name.toLowerCase() === partyName.toLowerCase()
-                );
-                return partyData || null;
+                return result.data;
             }
             return null;
         } catch (error) {
@@ -266,36 +266,20 @@ export const apiService = {
         }
     },
 
+
     getBoothClusters: async (constituencyId: number) => {
         try {
             const response = await fetch(`${BASE_URL}/api/booth-analysis/clusters/${constituencyId}`);
             const result = await response.json();
 
             if (result.success) {
-                return result;
+                return result.data;
             }
 
-            // Return fallback data if API fails
             return {
-                success: true,
-                data: {
-                    clusters: [
-                        {
-                            cluster_type: "High_Turnout_Large",
-                            booth_count: "182",
-                            avg_electors: "991",
-                            avg_turnout: "77.92"
-                        },
-                        {
-                            cluster_type: "High_Turnout_Small",
-                            booth_count: "168",
-                            avg_electors: "675",
-                            avg_turnout: "78.81"
-                        }
-                    ],
-                    total_clusters: 2,
-                    total_booths: "350"
-                }
+                clusters: [],
+                total_clusters: 0,
+                total_booths: 0
             };
         } catch (error) {
             console.error('Error fetching booth clusters:', error);
@@ -303,51 +287,28 @@ export const apiService = {
         }
     },
 
+
     getBoothRecommendations: async (constituencyId: number) => {
         try {
-            // Get booth analysis data and generate recommendations
-            const analysis = await apiService.getBoothAnalysis(constituencyId);
+            const response = await fetch(`${BASE_URL}/api/booth-analysis/recommendations/${constituencyId}`);
+            const result = await response.json();
 
-            if (analysis?.data?.booths) {
-                const recommendations = analysis.data.booths.slice(0, 5).map((booth: any) => ({
-                    booth_id: booth.booth_id,
-                    booth_number: booth.booth_number,
-                    booth_name: booth.booth_name,
-                    total_electors: booth.total_electors,
-                    turnout: parseFloat(booth.booth_turnout || booth.turnout_percentage || 0),
-                    winning_party: booth.winning_party,
-                    recommendation_category: booth.total_electors > 900 ? "High_Density_Strategic" :
-                        parseFloat(booth.booth_turnout || 0) < 60 ? "Low_Turnout_Opportunity" :
-                            "Highly_Competitive",
-                    strategy_suggestion: booth.total_electors > 900
-                        ? "Focus on voter mobilization due to high density"
-                        : parseFloat(booth.booth_turnout || 0) < 60
-                            ? "Target low turnout areas with campaigning"
-                            : "Competitive area requiring strategic planning"
-                }));
-
-                return {
-                    success: true,
-                    data: {
-                        recommendations: recommendations,
-                        total_recommendations: recommendations.length
-                    }
-                };
+            if (result.success) {
+                return result.data;
             }
 
             return {
-                success: true,
-                data: {
-                    recommendations: [],
-                    total_recommendations: 0
+                recommendations: [],
+                summary: {
+                    total_booths: 0,
+                    highly_competitive: 0,
+                    strongholds: 0,
+                    low_turnout_opportunities: 0
                 }
             };
         } catch (error) {
-            console.error('Error generating recommendations:', error);
-            return {
-                success: false,
-                error: 'Failed to generate recommendations'
-            };
+            console.error('Error fetching recommendations:', error);
+            throw error;
         }
     },
 
@@ -357,26 +318,17 @@ export const apiService = {
             const result = await response.json();
 
             if (result.success) {
-                return result;
+                return result.data;
             }
 
-            // Return fallback data
             return {
-                success: true,
-                data: {
-                    demographics: [],
-                    insights: {
-                        total_electors: 372079,
-                        male_electors: 147568,
-                        female_electors: 133369,
-                        avg_male_percentage: 40,
-                        avg_female_percentage: 36,
-                        demographic_clusters: {
-                            male_dominated: 120,
-                            female_dominated: 80,
-                            balanced: 239
-                        }
-                    }
+                demographics: [],
+                insights: {
+                    total_electors: 0,
+                    male_electors: 0,
+                    female_electors: 0,
+                    avg_male_percentage: 0,
+                    avg_female_percentage: 0
                 }
             };
         } catch (error) {
@@ -397,47 +349,54 @@ export const apiService = {
             const result = await response.json();
 
             if (result.success) {
-                return result;
+                return result.data;
             }
-
             throw new Error('Failed to compare booths');
         } catch (error) {
             console.error('Error comparing booths:', error);
             throw error;
         }
     },
-
-    getConstituencyBooths: async (constituencyId: number, page = 1, limit = 100) => {
+    getBoothTrends: async (boothId: number) => {
         try {
-            const response = await fetch(
-                `${BASE_URL}/api/constituencies/${constituencyId}/booths?page=${page}&limit=${limit}`
-            );
+            const response = await fetch(`${BASE_URL}/api/booth-analysis/trends/${boothId}`);
             const result = await response.json();
 
             if (result.success) {
-                return result;
+                return result.data;
+            }
+            return { booth_id: boothId, trends: [] };
+        } catch (error) {
+            console.error('Error fetching booth trends:', error);
+            throw error;
+        }
+    },
+
+    getConstituencyBooths: async (constituencyId: number, page: number = 1, limit: number = 10) => {
+        try {
+            const response = await fetch(`${BASE_URL}/api/booths/constituency/${constituencyId}?page=${page}&limit=${limit}`);
+            const result = await response.json();
+
+            if (result.success) {
+                return {
+                    data: result.data,
+                    meta: result.meta || {
+                        page: page,
+                        limit: limit,
+                        total: result.data.length,
+                        totalPages: 1
+                    }
+                };
             }
 
             // Return fallback data
             return {
-                success: true,
-                data: Array.from({ length: 10 }, (_, i) => ({
-                    booth_id: i + 1,
-                    booth_number: (i + 1).toString(),
-                    booth_name: `Polling Station ${i + 1}`,
-                    total_electors: Math.floor(Math.random() * 500) + 500,
-                    total_votes_cast: Math.floor(Math.random() * 400) + 400,
-                    male_voters: Math.floor(Math.random() * 300) + 200,
-                    female_voters: Math.floor(Math.random() * 300) + 200,
-                    other_voters: 0,
-                    booth_turnout: (Math.random() * 20 + 70).toFixed(2),
-                    candidate_count: "8"
-                })),
+                data: [],
                 meta: {
                     page: page,
                     limit: limit,
-                    total: 439,
-                    totalPages: 5
+                    total: 0,
+                    totalPages: 1
                 }
             };
         } catch (error) {
@@ -448,75 +407,29 @@ export const apiService = {
 
     getBoothAnalysis: async (constituencyId: number) => {
         try {
-            const response = await fetch(`${BASE_URL}/api/constituencies/${constituencyId}/booth-analysis`);
+            const response = await fetch(`${BASE_URL}/api/booth-analysis/constituency/${constituencyId}/booth-analysis`);
             const result = await response.json();
 
             if (result.success) {
-                return result;
+                return result.data;
             }
 
-            // Return fallback data using your actual API structure
+            // Return fallback data
             return {
-                success: true,
-                data: {
-                    booths: [
-                        {
-                            booth_id: 1,
-                            booth_number: 1,
-                            booth_name: "UCHCHA PRATHMIK VIDYALAYA ROOM NO. 1 RAHNA",
-                            total_electors: 1165,
-                            total_votes_cast: 804,
-                            male_voters: 449,
-                            female_voters: 355,
-                            other_voters: 0,
-                            booth_turnout: "69.01",
-                            winning_party: "Samajwadi Party",
-                            winning_votes: 451
-                        },
-                        {
-                            booth_id: 2,
-                            booth_number: 2,
-                            booth_name: "PRATHMIK VIDYALAYA ROOM NO. 1 JANIPUR MAJRA FAIZABAD",
-                            total_electors: 887,
-                            total_votes_cast: 789,
-                            male_voters: 423,
-                            female_voters: 366,
-                            other_voters: 0,
-                            booth_turnout: "88.95",
-                            winning_party: "Samajwadi Party",
-                            winning_votes: 773
-                        }
-                    ],
-                    party_dominance: [
-                        {
-                            party_name: "Samajwadi Party",
-                            booths_won: "236",
-                            total_votes: "109460"
-                        },
-                        {
-                            party_name: "Bharatiya Janata Party",
-                            booths_won: "169",
-                            total_votes: "68808"
-                        },
-                        {
-                            party_name: "Bahujan Samaj Party",
-                            booths_won: "34",
-                            total_votes: "12332"
-                        }
-                    ],
-                    summary: {
-                        ac_name: "Behat",
-                        total_booths: "439",
-                        total_electors: "372079",
-                        total_votes_cast: "280938",
-                        avg_turnout: "75.50"
-                    },
-                    insights: {
-                        high_turnout_booths: 350,
-                        low_turnout_booths: 89,
-                        large_booths: 113,
-                        total_booths_analyzed: 439
-                    }
+                booths: [],
+                party_dominance: [],
+                summary: {
+                    total_booths: 0,
+                    total_electors: 0,
+                    total_votes_cast: 0,
+                    avg_turnout: 0
+                },
+                insights: {
+                    high_turnout_booths: 0,
+                    low_turnout_booths: 0,
+                    large_booths: 0,
+                    leading_party: 'None',
+                    total_booths_analyzed: 0
                 }
             };
         } catch (error) {
@@ -525,25 +438,20 @@ export const apiService = {
         }
     },
 
-    getHeatmapData: async (constituencyId: number, metric = 'turnout') => {
+    getHeatmapData: async (constituencyId: number, metric: string = 'turnout') => {
         try {
             const response = await fetch(`${BASE_URL}/api/booth-analysis/heatmap/${constituencyId}?metric=${metric}`);
             const result = await response.json();
 
             if (result.success) {
-                return result;
+                return result.data;
             }
-
             throw new Error('Failed to fetch heatmap data');
         } catch (error) {
             console.error('Error fetching heatmap:', error);
             throw error;
         }
-    }
-
-    ,
-
-
+    },
     // src/services/api.ts - Add fixes
     getStateAssemblies: async (stateId: number): Promise<AssemblyConstituency[]> => {
         try {
