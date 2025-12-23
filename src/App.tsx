@@ -33,6 +33,7 @@ const App = () => (
             <Route path="/booth/:id" element={<BoothDetailsPage />} />
             <Route path="/constituency/:id/booth-analysis" element={<BoothAnalysisPage />} />
             <Route path="/constituency/:id/compare-booths" element={<BoothComparisonPage />} />
+            <Route path="/booth/:id/analysis" element={<BoothAnalysisPage />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </Layout>

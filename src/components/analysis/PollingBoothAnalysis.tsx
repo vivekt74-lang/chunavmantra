@@ -1,6 +1,19 @@
-// src/components/analysis/PollingBoothAnalysis.tsx - Updated
+// src/components/analysis/PollingBoothAnalysis.tsx - COMPLETE UPDATED VERSION
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
+import {
+    Search,
+    Download,
+    ChevronRight,
+    Building2,
+    Users,
+    TrendingUp,
+    AlertCircle,
+    Trophy,
+    BarChart3,
+    RefreshCw,
+    GitCompare
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -15,19 +28,6 @@ import {
     SelectTrigger,
     SelectValue,
 } from "@/components/ui/select";
-import {
-    Search,
-    Filter,
-    Download,
-    ChevronRight,
-    Building2,
-    Users,
-    TrendingUp,
-    AlertCircle,
-    Trophy,
-    BarChart3,
-    RefreshCw
-} from "lucide-react";
 
 interface PollingBoothAnalysisProps {
     constituencyId: number;
@@ -45,27 +45,54 @@ const PollingBoothAnalysis = ({ constituencyId, constituencyName }: PollingBooth
     const [filterParty, setFilterParty] = useState<string>("all");
     const [filterTurnout, setFilterTurnout] = useState<string>("all");
 
+    // Helper functions for safe data handling
+    const getSafeNumber = (value: any, defaultValue: number = 0): number => {
+        if (value === null || value === undefined) return defaultValue;
+        const num = Number(value);
+        return isNaN(num) ? defaultValue : num;
+    };
+
+    const getSafeString = (value: any, defaultValue: string = ""): string => {
+        if (value === null || value === undefined) return defaultValue;
+        return String(value);
+    };
+
+    const formatNumber = (num: any): string => {
+        const number = getSafeNumber(num);
+        return number.toLocaleString('en-IN');
+    };
+
     const loadData = async () => {
         setLoading(true);
         setError(null);
 
         try {
             // Load both booth analysis and individual booths
-            const [analysis, boothsData] = await Promise.all([
+            const [analysis, boothsData] = await Promise.allSettled([
                 apiService.getBoothAnalysis(constituencyId),
                 apiService.getConstituencyBooths(constituencyId, currentPage, 10)
             ]);
 
-            setAnalysisData(analysis);
-            setBooths(Array.isArray(boothsData.data) ? boothsData.data : []);
+            if (analysis.status === 'fulfilled') {
+                setAnalysisData(analysis.value);
+            } else {
+                setAnalysisData(null);
+            }
 
-            if (boothsData.meta) {
-                setTotalPages(boothsData.meta.totalPages || 1);
+            if (boothsData.status === 'fulfilled') {
+                const data = boothsData.value;
+                setBooths(Array.isArray(data.data) ? data.data : []);
+
+                if (data.meta) {
+                    setTotalPages(getSafeNumber(data.meta.totalPages, 1));
+                }
+            } else {
+                setBooths([]);
             }
 
         } catch (error) {
             console.error('Error loading booth data:', error);
-            setError('Failed to load booth analysis data');
+            setError('Failed to load booth analysis data. Please try again.');
             setBooths([]);
             setAnalysisData(null);
         } finally {
@@ -81,23 +108,27 @@ const PollingBoothAnalysis = ({ constituencyId, constituencyName }: PollingBooth
         // Search filter
         if (searchQuery.trim()) {
             const query = searchQuery.toLowerCase();
+            const boothName = getSafeString(booth.booth_name).toLowerCase();
+            const boothNumber = getSafeString(booth.booth_number).toLowerCase();
+            const winningParty = getSafeString(booth.winning_party).toLowerCase();
+
             if (!(
-                booth.booth_name?.toLowerCase().includes(query) ||
-                booth.booth_number?.toString().includes(query) ||
-                booth.winning_party?.toLowerCase().includes(query)
+                boothName.includes(query) ||
+                boothNumber.includes(query) ||
+                winningParty.includes(query)
             )) {
                 return false;
             }
         }
 
         // Party filter
-        if (filterParty !== "all" && booth.winning_party !== filterParty) {
+        if (filterParty !== "all" && getSafeString(booth.winning_party) !== filterParty) {
             return false;
         }
 
         // Turnout filter
         if (filterTurnout !== "all") {
-            const turnout = parseFloat(booth.turnout_percentage || booth.booth_turnout || 0);
+            const turnout = getSafeNumber(booth.turnout_percentage || booth.booth_turnout);
             switch (filterTurnout) {
                 case "high":
                     if (turnout < 70) return false;
@@ -114,20 +145,18 @@ const PollingBoothAnalysis = ({ constituencyId, constituencyName }: PollingBooth
         return true;
     });
 
-    const formatNumber = (num: number) => {
-        return num?.toLocaleString('en-IN') || '0';
-    };
-
-    const getTurnoutBadge = (turnout: number) => {
-        if (turnout >= 70) return <Badge variant="default" className="bg-green-100 text-green-800 hover:bg-green-100">High</Badge>;
-        if (turnout >= 50) return <Badge variant="outline" className="text-yellow-700 border-yellow-300">Medium</Badge>;
+    const getTurnoutBadge = (turnout: any) => {
+        const turnoutNum = getSafeNumber(turnout);
+        if (turnoutNum >= 70) return <Badge variant="default" className="bg-green-100 text-green-800 hover:bg-green-100">High</Badge>;
+        if (turnoutNum >= 50) return <Badge variant="outline" className="text-yellow-700 border-yellow-300">Medium</Badge>;
         return <Badge variant="destructive" className="bg-red-100 text-red-800 hover:bg-red-100">Low</Badge>;
     };
 
     // Extract unique parties for filter
-    const uniqueParties = Array.from(new Set(booths
-        .map(b => b.winning_party)
-        .filter(Boolean)
+    const uniqueParties = Array.from(new Set(
+        booths
+            .map(b => getSafeString(b.winning_party))
+            .filter(party => party && party !== 'undefined' && party !== 'null')
     )).sort();
 
     if (loading && booths.length === 0) {
@@ -145,6 +174,7 @@ const PollingBoothAnalysis = ({ constituencyId, constituencyName }: PollingBooth
                 <AlertCircle className="h-12 w-12 text-destructive mx-auto mb-4" />
                 <p className="text-destructive mb-4">{error}</p>
                 <Button onClick={loadData} variant="outline">
+                    <RefreshCw className="h-4 w-4 mr-2" />
                     Retry
                 </Button>
             </div>
@@ -211,52 +241,57 @@ const PollingBoothAnalysis = ({ constituencyId, constituencyName }: PollingBooth
             </div>
 
             {/* Analysis Summary Cards */}
-            {analysisData && (
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                    <Card>
-                        <CardContent className="pt-6">
-                            <div className="text-center">
-                                <Building2 className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
-                                <p className="text-sm text-muted-foreground">Total Booths</p>
-                                <p className="text-2xl font-bold">{analysisData.summary?.total_booths || booths.length}</p>
-                            </div>
-                        </CardContent>
-                    </Card>
-                    <Card>
-                        <CardContent className="pt-6">
-                            <div className="text-center">
-                                <Users className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
-                                <p className="text-sm text-muted-foreground">Total Voters</p>
-                                <p className="text-2xl font-bold">
-                                    {formatNumber(analysisData.summary?.total_electors || 0)}
-                                </p>
-                            </div>
-                        </CardContent>
-                    </Card>
-                    <Card>
-                        <CardContent className="pt-6">
-                            <div className="text-center">
-                                <TrendingUp className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
-                                <p className="text-sm text-muted-foreground">Avg Turnout</p>
-                                <p className="text-2xl font-bold">
-                                    {analysisData.summary?.avg_turnout ? `${analysisData.summary.avg_turnout}%` : 'N/A'}
-                                </p>
-                            </div>
-                        </CardContent>
-                    </Card>
-                    <Card>
-                        <CardContent className="pt-6">
-                            <div className="text-center">
-                                <Trophy className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
-                                <p className="text-sm text-muted-foreground">Leading Party</p>
-                                <p className="text-2xl font-bold truncate">
-                                    {analysisData.party_dominance?.[0]?.party_name?.substring(0, 12) || "N/A"}
-                                </p>
-                            </div>
-                        </CardContent>
-                    </Card>
-                </div>
-            )}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <Card>
+                    <CardContent className="pt-6">
+                        <div className="text-center">
+                            <Building2 className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
+                            <p className="text-sm text-muted-foreground">Total Booths</p>
+                            <p className="text-2xl font-bold">
+                                {getSafeNumber(analysisData?.summary?.total_booths || booths.length)}
+                            </p>
+                        </div>
+                    </CardContent>
+                </Card>
+                <Card>
+                    <CardContent className="pt-6">
+                        <div className="text-center">
+                            <Users className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
+                            <p className="text-sm text-muted-foreground">Total Voters</p>
+                            <p className="text-2xl font-bold">
+                                {formatNumber(analysisData?.summary?.total_electors ||
+                                    booths.reduce((sum, b) => sum + getSafeNumber(b.total_electors), 0))}
+                            </p>
+                        </div>
+                    </CardContent>
+                </Card>
+                <Card>
+                    <CardContent className="pt-6">
+                        <div className="text-center">
+                            <TrendingUp className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
+                            <p className="text-sm text-muted-foreground">Avg Turnout</p>
+                            <p className="text-2xl font-bold">
+                                {analysisData?.summary?.avg_turnout
+                                    ? `${getSafeNumber(analysisData.summary.avg_turnout).toFixed(1)}%`
+                                    : booths.length > 0
+                                        ? `${(booths.reduce((sum, b) => sum + getSafeNumber(b.turnout_percentage || b.booth_turnout), 0) / booths.length).toFixed(1)}%`
+                                        : 'N/A'}
+                            </p>
+                        </div>
+                    </CardContent>
+                </Card>
+                <Card>
+                    <CardContent className="pt-6">
+                        <div className="text-center">
+                            <Trophy className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
+                            <p className="text-sm text-muted-foreground">Leading Party</p>
+                            <p className="text-2xl font-bold truncate">
+                                {getSafeString(analysisData?.party_dominance?.[0]?.party_name, "N/A").substring(0, 12)}
+                            </p>
+                        </div>
+                    </CardContent>
+                </Card>
+            </div>
 
             {/* Party Dominance Summary */}
             {analysisData?.party_dominance && analysisData.party_dominance.length > 0 && (
@@ -267,37 +302,38 @@ const PollingBoothAnalysis = ({ constituencyId, constituencyName }: PollingBooth
                     </CardHeader>
                     <CardContent>
                         <div className="space-y-4">
-                            {analysisData.party_dominance.slice(0, 5).map((party: any, index: number) => (
-                                <div key={party.party_name} className="space-y-2">
-                                    <div className="flex items-center justify-between">
-                                        <div className="flex items-center gap-3">
-                                            <PartyBadge party={party.party_name} />
-                                            <span className="text-sm text-muted-foreground">
-                                                {party.booths_won} booths
+                            {analysisData.party_dominance.slice(0, 5).map((party: any, index: number) => {
+                                const boothsWon = getSafeNumber(party.booths_won);
+                                const totalBooths = getSafeNumber(analysisData?.summary?.total_booths);
+                                const percentage = totalBooths > 0 ? (boothsWon / totalBooths) * 100 : 0;
+
+                                return (
+                                    <div key={getSafeString(party.party_name) + index} className="space-y-2">
+                                        <div className="flex items-center justify-between">
+                                            <div className="flex items-center gap-3">
+                                                <PartyBadge party={getSafeString(party.party_name)} />
+                                                <span className="text-sm text-muted-foreground">
+                                                    {boothsWon} booths
+                                                </span>
+                                            </div>
+                                            <span className="text-sm font-semibold">
+                                                {percentage.toFixed(1)}%
                                             </span>
                                         </div>
-                                        <span className="text-sm font-semibold">
-                                            {analysisData.summary?.total_booths
-                                                ? `${((party.booths_won / analysisData.summary.total_booths) * 100).toFixed(1)}%`
-                                                : '0%'
-                                            }
-                                        </span>
+                                        <div className="w-full h-3 bg-muted rounded-full overflow-hidden">
+                                            <div
+                                                className="h-full rounded-full"
+                                                style={{
+                                                    width: `${percentage}%`,
+                                                    backgroundColor: index === 0 ? '#10b981' :
+                                                        index === 1 ? '#3b82f6' :
+                                                            index === 2 ? '#f59e0b' : '#6b7280'
+                                                }}
+                                            />
+                                        </div>
                                     </div>
-                                    <div className="w-full h-3 bg-muted rounded-full overflow-hidden">
-                                        <div
-                                            className="h-full rounded-full"
-                                            style={{
-                                                width: `${analysisData.summary?.total_booths
-                                                    ? (party.booths_won / analysisData.summary.total_booths) * 100
-                                                    : 0}%`,
-                                                backgroundColor: index === 0 ? '#10b981' :
-                                                    index === 1 ? '#3b82f6' :
-                                                        index === 2 ? '#f59e0b' : '#6b7280'
-                                            }}
-                                        />
-                                    </div>
-                                </div>
-                            ))}
+                                );
+                            })}
                         </div>
                     </CardContent>
                 </Card>
@@ -335,55 +371,50 @@ const PollingBoothAnalysis = ({ constituencyId, constituencyName }: PollingBooth
                                         </TableRow>
                                     </TableHeader>
                                     <TableBody>
-                                        {filteredBooths.map((booth) => (
-                                            <TableRow key={booth.booth_id || booth.booth_number}>
-                                                <TableCell className="font-mono font-medium">
-                                                    {booth.booth_number || 'N/A'}
-                                                </TableCell>
-                                                <TableCell className="max-w-xs">
-                                                    <div className="truncate" title={booth.booth_name}>
-                                                        {booth.booth_name || `Booth ${booth.booth_number}`}
-                                                    </div>
-                                                </TableCell>
-                                                <TableCell>
-                                                    {formatNumber(booth.total_electors || 0)}
-                                                </TableCell>
-                                                <TableCell>
-                                                    <div className="flex items-center gap-2">
-                                                        <span>
-                                                            {booth.turnout_percentage ?
-                                                                `${parseFloat(booth.turnout_percentage).toFixed(1)}%` :
-                                                                booth.booth_turnout ?
-                                                                    `${parseFloat(booth.booth_turnout).toFixed(1)}%` :
-                                                                    'N/A'
-                                                            }
-                                                        </span>
-                                                        {booth.turnout_percentage && getTurnoutBadge(parseFloat(booth.turnout_percentage))}
-                                                    </div>
-                                                </TableCell>
-                                                <TableCell>
-                                                    {booth.winning_party ? (
-                                                        <PartyBadge party={booth.winning_party} size="sm" />
-                                                    ) : (
-                                                        <span className="text-muted-foreground text-sm">No data</span>
-                                                    )}
-                                                </TableCell>
-                                                <TableCell className="text-right">
-                                                    <div className="flex justify-end gap-2">
-                                                        <Button size="sm" variant="ghost" asChild>
-                                                            <Link to={`/booth/${booth.booth_id || booth.booth_number}`}>
-                                                                View Details
-                                                            </Link>
-                                                        </Button>
-                                                        <Button size="sm" variant="outline" asChild>
-                                                            <Link to={`/booth/${booth.booth_id || booth.booth_number}/analysis`}>
-                                                                Analysis
-                                                            </Link>
-                                                        </Button>
-                                                    </div>
-                                                </TableCell>
-                                            </TableRow>
-                                        ))}
+                                        {filteredBooths.map((booth, index) => {
+                                            const turnout = booth.turnout_percentage || booth.booth_turnout;
+                                            const turnoutNum = getSafeNumber(turnout);
+
+                                            return (
+                                                <TableRow key={booth.booth_id || index}>
+                                                    <TableCell className="font-mono font-medium">
+                                                        {getSafeString(booth.booth_number, 'N/A')}
+                                                    </TableCell>
+                                                    <TableCell className="max-w-xs">
+                                                        <div className="truncate" title={getSafeString(booth.booth_name)}>
+                                                            {getSafeString(booth.booth_name, `Booth ${booth.booth_number}`)}
+                                                        </div>
+                                                    </TableCell>
+                                                    <TableCell>
+                                                        {formatNumber(booth.total_electors)}
+                                                    </TableCell>
+                                                    <TableCell>
+                                                        <div className="flex items-center gap-2">
+                                                            <span>
+                                                                {!isNaN(turnoutNum) ? `${turnoutNum.toFixed(1)}%` : 'N/A'}
+                                                            </span>
+                                                            {getTurnoutBadge(turnout)}
+                                                        </div>
+                                                    </TableCell>
+                                                    <TableCell>
+                                                        {booth.winning_party ? (
+                                                            <PartyBadge party={getSafeString(booth.winning_party)} size="sm" />
+                                                        ) : (
+                                                            <span className="text-muted-foreground text-sm">No data</span>
+                                                        )}
+                                                    </TableCell>
+                                                    <TableCell className="text-right">
+                                                        <div className="flex justify-end gap-2">
+                                                            <Button size="sm" variant="ghost" asChild>
+                                                                <Link to={`/booth/${booth.booth_id || booth.booth_number}`}>
+                                                                    View Details
+                                                                </Link>
+                                                            </Button>
+                                                        </div>
+                                                    </TableCell>
+                                                </TableRow>
+                                            );
+                                        })}
                                     </TableBody>
                                 </Table>
                             </div>
@@ -444,6 +475,12 @@ const PollingBoothAnalysis = ({ constituencyId, constituencyName }: PollingBooth
                         <BarChart3 className="mr-2 h-5 w-5" />
                         View Advanced Booth Analysis
                         <ChevronRight className="ml-2 h-5 w-5" />
+                    </Link>
+                </Button>
+                <Button asChild variant="outline" size="lg" className="mt-4 ml-4">
+                    <Link to={`/constituency/${constituencyId}/compare-booths`}>
+                        <GitCompare className="mr-2 h-5 w-5" />
+                        Compare Booths
                     </Link>
                 </Button>
             </div>

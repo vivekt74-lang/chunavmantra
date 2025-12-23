@@ -98,6 +98,7 @@ export const apiService = {
         return await apiFetch<any[]>(`${BASE_URL}/api/constituencies/${constituencyId}/historical-mlas`);
     },
 
+    // In apiService.ts
     getBoothDetails: async (boothId: number) => {
         try {
             const response = await fetch(`${BASE_URL}/api/booths/${boothId}`);
@@ -405,16 +406,54 @@ export const apiService = {
         }
     },
 
+    // src/services/api.ts - Updated getBoothAnalysis function
     getBoothAnalysis: async (constituencyId: number) => {
         try {
             const response = await fetch(`${BASE_URL}/api/booth-analysis/constituency/${constituencyId}/booth-analysis`);
             const result = await response.json();
 
-            if (result.success) {
-                return result.data;
+            if (result.success && result.data) {
+                // Fix data types - ensure numeric fields are numbers
+                const fixedData = {
+                    ...result.data,
+                    booths: result.data.booths?.map((booth: any) => ({
+                        ...booth,
+                        total_electors: Number(booth.total_electors) || 0,
+                        total_votes_cast: Number(booth.total_votes_cast) || 0,
+                        male_voters: Number(booth.male_voters) || 0,
+                        female_voters: Number(booth.female_voters) || 0,
+                        other_voters: Number(booth.other_voters) || 0,
+                        turnout_percentage: Number(booth.turnout_percentage) || 0,
+                        booth_turnout: Number(booth.booth_turnout) || Number(booth.turnout_percentage) || 0,
+                        winning_votes: Number(booth.winning_votes) || 0,
+                        // Parse string numbers
+                        booth_number: booth.booth_number ? String(booth.booth_number) : ''
+                    })) || [],
+                    party_dominance: result.data.party_dominance?.map((party: any) => ({
+                        ...party,
+                        booths_won: Number(party.booths_won) || 0,
+                        total_votes: Number(party.total_votes) || 0
+                    })) || [],
+                    summary: result.data.summary ? {
+                        ...result.data.summary,
+                        total_booths: Number(result.data.summary.total_booths) || 0,
+                        total_electors: Number(result.data.summary.total_electors) || 0,
+                        total_votes_cast: Number(result.data.summary.total_votes_cast) || 0,
+                        avg_turnout: Number(result.data.summary.avg_turnout) || 0
+                    } : null,
+                    insights: result.data.insights ? {
+                        ...result.data.insights,
+                        high_turnout_booths: Number(result.data.insights.high_turnout_booths) || 0,
+                        low_turnout_booths: Number(result.data.insights.low_turnout_booths) || 0,
+                        large_booths: Number(result.data.insights.large_booths) || 0,
+                        total_booths_analyzed: Number(result.data.insights.total_booths_analyzed) || 0
+                    } : null
+                };
+
+                return fixedData;
             }
 
-            // Return fallback data
+            // Return fallback data with proper types
             return {
                 booths: [],
                 party_dominance: [],
@@ -422,7 +461,8 @@ export const apiService = {
                     total_booths: 0,
                     total_electors: 0,
                     total_votes_cast: 0,
-                    avg_turnout: 0
+                    avg_turnout: 0,
+                    ac_name: "Unknown"
                 },
                 insights: {
                     high_turnout_booths: 0,
