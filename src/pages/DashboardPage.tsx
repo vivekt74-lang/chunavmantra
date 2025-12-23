@@ -1,5 +1,5 @@
-// src/pages/DashboardPage.tsx - Fixed version
-import { useState, useEffect } from "react";
+// src/pages/DashboardPage.tsx - FIXED VERSION
+import { useState, useEffect, useCallback } from "react";
 import { Link } from "react-router-dom";
 import {
   ChevronRight,
@@ -10,7 +10,8 @@ import {
   MapPin,
   TrendingUp,
   Calendar,
-  ExternalLink
+  ExternalLink,
+  Loader2
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -23,69 +24,85 @@ import DemographicChart from "@/components/charts/DemographicChart";
 import DataCard from "@/components/ui/DataCard";
 import PartyBadge from "@/components/ui/PartyBadge";
 import { apiService } from "@/services/api";
-import type { State, AssemblyConstituency, ElectionResult, DemographicData } from "@/types";
+import type { State, AssemblyConstituency, ElectionResult, DemographicData, ConstituencyStats } from "@/types";
 
 const DashboardPage = () => {
   const [selectedState, setSelectedState] = useState<State | null>(null);
   const [selectedAssembly, setSelectedAssembly] = useState<AssemblyConstituency | null>(null);
-  const [constituencyStats, setConstituencyStats] = useState<any>(null);
+  const [constituencyStats, setConstituencyStats] = useState<ConstituencyStats | null>(null);
   const [electionResults, setElectionResults] = useState<ElectionResult[]>([]);
   const [demographicData, setDemographicData] = useState<DemographicData | null>(null);
   const [historicalMLAs, setHistoricalMLAs] = useState<any[]>([]);
   const [states, setStates] = useState<State[]>([]);
-  const [loading, setLoading] = useState(false);
   const [statesLoading, setStatesLoading] = useState(true);
+  const [dataLoading, setDataLoading] = useState(false);
 
-  // Load all states on initial mount
+  // Load all states on initial mount - only once
   useEffect(() => {
+    let isMounted = true;
+
     const loadStates = async () => {
       setStatesLoading(true);
       try {
         const statesData = await apiService.getStates();
-        if (Array.isArray(statesData)) {
-          setStates(statesData);
-        } else {
-          setStates([]);
-          console.error('Invalid states data format:', statesData);
+        if (isMounted) {
+          setStates(Array.isArray(statesData) ? statesData : []);
         }
       } catch (error) {
         console.error("Failed to load states:", error);
-        setStates([]);
+        if (isMounted) {
+          setStates([]);
+        }
       } finally {
-        setStatesLoading(false);
+        if (isMounted) {
+          setStatesLoading(false);
+        }
       }
     };
 
     loadStates();
+
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
-  // Add handleStateSelect function
-  const handleStateSelect = (state: State) => {
+  const handleStateSelect = useCallback((state: State) => {
     setSelectedState(state);
     setSelectedAssembly(null);
     setConstituencyStats(null);
     setElectionResults([]);
     setDemographicData(null);
     setHistoricalMLAs([]);
-  };
+  }, []);
 
-  // Handle assembly selection
-  const handleAssemblySelect = async (assembly: AssemblyConstituency) => {
+  const handleAssemblySelect = useCallback(async (assembly: AssemblyConstituency) => {
     setSelectedAssembly(assembly);
-    setLoading(true);
+    setDataLoading(true);
 
     try {
-      // Load all data in parallel with error handling for each
-      const [stats, results, demographics, mlas] = await Promise.allSettled([
+      // Load all data in parallel with proper typing
+      const [statsPromise, resultsPromise, demographicsPromise, mlasPromise] = [
         apiService.getConstituencyStats(assembly.constituency_id),
         apiService.getElectionResults(assembly.constituency_id, 2022),
         apiService.getConstituencyDemographics(assembly.constituency_id),
         apiService.getHistoricalMLAs(assembly.constituency_id)
+      ];
+
+      const results = await Promise.allSettled([
+        statsPromise,
+        resultsPromise,
+        demographicsPromise,
+        mlasPromise
       ]);
 
-      // Set data with fallbacks
-      setConstituencyStats(
-        stats.status === 'fulfilled' ? stats.value : {
+      // Type-safe handling of each promise result
+      // 1. Constituency Stats
+      if (results[0].status === 'fulfilled') {
+        setConstituencyStats(results[0].value as ConstituencyStats);
+      } else {
+        console.warn('Failed to load constituency stats:', results[0].reason);
+        setConstituencyStats({
           constituency_id: assembly.constituency_id,
           constituency_name: assembly.constituency_name,
           total_voters: assembly.total_voters,
@@ -99,11 +116,15 @@ const DashboardPage = () => {
           turnout_2022: 75.5,
           margin_2022: 38007,
           margin_percentage_2022: 13.53
-        }
-      );
+        });
+      }
 
-      setElectionResults(
-        results.status === 'fulfilled' ? results.value : [
+      // 2. Election Results
+      if (results[1].status === 'fulfilled') {
+        setElectionResults(results[1].value as ElectionResult[]);
+      } else {
+        console.warn('Failed to load election results:', results[1].reason);
+        setElectionResults([
           {
             result_id: 1,
             constituency_id: assembly.constituency_id,
@@ -134,19 +155,32 @@ const DashboardPage = () => {
             margin: 0,
             margin_percentage: 0
           }
-        ]
-      );
+        ]);
+      }
 
-      setDemographicData(
-        demographics.status === 'fulfilled' ? demographics.value : {
+      // 3. Demographic Data
+      if (results[2].status === 'fulfilled') {
+        setDemographicData(results[2].value as DemographicData);
+      } else {
+        console.warn('Failed to load demographics:', results[2].reason);
+        setDemographicData({
           gender_distribution: { male: 40, female: 36, other: 0 },
           caste_distribution: { sc: 20, st: 10, obc: 35, general: 35 },
           urban_rural: { urban: 40, rural: 60 }
-        }
-      );
+        });
+      }
 
-      setHistoricalMLAs(
-        mlas.status === 'fulfilled' ? mlas.value : [
+      // 4. Historical MLAs
+      if (results[3].status === 'fulfilled') {
+        const mlasData = results[3].value;
+        if (Array.isArray(mlasData)) {
+          setHistoricalMLAs(mlasData);
+        } else {
+          setHistoricalMLAs([]);
+        }
+      } else {
+        console.warn('Failed to load historical MLAs:', results[3].reason);
+        setHistoricalMLAs([
           {
             election_year: 2022,
             candidate_name: "Umar Ali Khan",
@@ -155,32 +189,28 @@ const DashboardPage = () => {
             rank: "1",
             is_winner: true
           }
-        ]
-      );
+        ]);
+      }
 
     } catch (error) {
       console.error("Failed to load constituency data:", error);
     } finally {
-      setLoading(false);
+      setDataLoading(false);
     }
-  };
+  }, []);
 
-  // Format numbers with Indian comma system
   const formatIndianNumber = (num: number) => {
     return num.toLocaleString('en-IN');
   };
 
-  // Get winner from election results
   const getWinner = () => {
     return electionResults.find(result => result.rank === 1);
   };
 
-  // Get runner-up from election results
   const getRunnerUp = () => {
     return electionResults.find(result => result.rank === 2);
   };
 
-  // Calculate victory margin
   const calculateVictoryMargin = () => {
     const winner = getWinner();
     const runnerUp = getRunnerUp();
@@ -194,12 +224,39 @@ const DashboardPage = () => {
     return { votes: 0, percentage: 0 };
   };
 
-  if (loading) {
+  if (statesLoading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
-          <p className="text-muted-foreground">Loading constituency data...</p>
+          <Loader2 className="h-12 w-12 animate-spin text-primary mx-auto mb-4" />
+          <p className="text-muted-foreground">Loading dashboard...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (dataLoading) {
+    return (
+      <div className="min-h-screen bg-background">
+        <div className="border-b border-border bg-card">
+          <div className="container px-4 py-6">
+            <div className="flex items-center gap-4">
+              <div>
+                <h1 className="font-serif text-2xl md:text-3xl font-bold text-foreground">
+                  Election Dashboard
+                </h1>
+                <p className="text-muted-foreground mt-1">
+                  Explore election data across states and constituencies
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div className="container px-4 py-8">
+          <div className="text-center py-12">
+            <Loader2 className="h-12 w-12 animate-spin text-primary mx-auto mb-4" />
+            <p className="text-muted-foreground">Loading constituency data...</p>
+          </div>
         </div>
       </div>
     );
@@ -389,7 +446,7 @@ const DashboardPage = () => {
                       <div className="space-y-3">
                         {historicalMLAs.slice(0, 5).map((mla, index) => (
                           <div
-                            key={index}
+                            key={`mla-${mla.election_year}-${index}`}
                             className="flex items-center justify-between p-3 rounded-lg bg-muted/50 hover:bg-muted transition-colors"
                           >
                             <div className="flex items-center gap-3">
@@ -452,7 +509,7 @@ const DashboardPage = () => {
                           </TableHeader>
                           <TableBody>
                             {electionResults.map((result) => (
-                              <TableRow key={result.result_id || result.candidate_name}>
+                              <TableRow key={`result-${result.result_id}`}>
                                 <TableCell className="font-medium">
                                   {result.rank === 1 ? (
                                     <span className="flex items-center gap-1">

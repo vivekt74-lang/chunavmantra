@@ -1,4 +1,3 @@
-// src/services/api.ts - COMPLETE FIXED VERSION
 import type {
     State,
     AssemblyConstituency,
@@ -11,6 +10,7 @@ import type {
     DemographicData,
     ApiResponse
 } from '../types';
+import { apiCache } from '@/lib/cache';
 
 const BASE_URL = import.meta.env.VITE_API_URL || 'https://chunavmantra-backend.onrender.com';
 
@@ -38,6 +38,26 @@ const apiFetch = async <T>(url: string, options?: RequestInit): Promise<T> => {
     }
 };
 
+// Enhanced fetch with caching
+const cachedFetch = async <T>(
+    cacheKey: string,
+    url: string,
+    options?: RequestInit,
+    ttl?: number
+): Promise<T> => {
+    // Check cache first
+    const cached = apiCache.get(cacheKey);
+    if (cached) {
+        console.log(`Cache hit: ${cacheKey}`);
+        return cached as T;
+    }
+
+    console.log(`Cache miss: ${cacheKey}`);
+    const data = await apiFetch<T>(url, options);
+    apiCache.set(cacheKey, data, ttl);
+    return data;
+};
+
 export const apiService = {
     // Health & System
     checkHealth: async () => {
@@ -46,16 +66,22 @@ export const apiService = {
     },
 
     getStateStats: async (stateId: number) => {
-        return await apiFetch<any>(`${BASE_URL}/api/states/${stateId}/stats`);
+        const cacheKey = `state-stats-${stateId}`;
+        return await cachedFetch<any>(cacheKey, `${BASE_URL}/api/states/${stateId}/stats`);
     },
 
     // Constituencies
     getConstituencyById: async (id: number): Promise<any> => {
+        const cacheKey = `constituency-${id}`;
         try {
-            return await apiFetch<any>(`${BASE_URL}/api/constituencies/${id}`);
+            return await cachedFetch<any>(
+                cacheKey,
+                `${BASE_URL}/api/constituencies/${id}`,
+                undefined,
+                10 * 60 * 1000 // 10 minutes cache
+            );
         } catch (error) {
             console.error(`Error fetching constituency ${id}:`, error);
-            // Return fallback structure
             return {
                 constituency_id: id,
                 constituency_name: `Constituency ${id}`,
@@ -67,9 +93,16 @@ export const apiService = {
             };
         }
     },
+
     getAllConstituencies: async (): Promise<AssemblyConstituency[]> => {
+        const cacheKey = 'all-constituencies';
         try {
-            return await apiFetch<AssemblyConstituency[]>(`${BASE_URL}/api/constituencies`);
+            return await cachedFetch<AssemblyConstituency[]>(
+                cacheKey,
+                `${BASE_URL}/api/constituencies`,
+                undefined,
+                15 * 60 * 1000 // 15 minutes cache
+            );
         } catch (error) {
             console.error("Error fetching all constituencies:", error);
             return [];
@@ -77,54 +110,69 @@ export const apiService = {
     },
 
     getConstituencyStats: async (id: number): Promise<ConstituencyStats> => {
-        const data = await apiFetch<any>(`${BASE_URL}/api/constituencies/${id}/stats`);
-        return {
-            constituency_id: data.constituency_id || id,
-            constituency_name: data.ac_name || data.constituency_name || '',
-            total_voters: data.total_voters || data.total_electors || 0,
-            polling_booths: data.polling_booths || 0,
-            winner_2022: data.winner_2022 || null,
-            turnout_2022: data.turnout_2022 || 0,
-            margin_2022: data.margin_2022 || 0,
-            margin_percentage_2022: data.margin_percentage_2022 || 0
-        };
+        const cacheKey = `constituency-stats-${id}`;
+        try {
+            const data = await cachedFetch<any>(
+                cacheKey,
+                `${BASE_URL}/api/constituencies/${id}/stats`,
+                undefined,
+                5 * 60 * 1000 // 5 minutes cache
+            );
+            return {
+                constituency_id: data.constituency_id || id,
+                constituency_name: data.ac_name || data.constituency_name || '',
+                total_voters: data.total_voters || data.total_electors || 0,
+                polling_booths: data.polling_booths || 0,
+                winner_2022: data.winner_2022 || null,
+                turnout_2022: data.turnout_2022 || 0,
+                margin_2022: data.margin_2022 || 0,
+                margin_percentage_2022: data.margin_percentage_2022 || 0
+            };
+        } catch (error) {
+            console.error(`Error fetching constituency stats ${id}:`, error);
+            throw error;
+        }
     },
 
     getConstituencyDemographics: async (id: number): Promise<DemographicData> => {
-        return await apiFetch<DemographicData>(`${BASE_URL}/api/constituencies/${id}/demographics`);
+        const cacheKey = `constituency-demographics-${id}`;
+        return await cachedFetch<DemographicData>(
+            cacheKey,
+            `${BASE_URL}/api/constituencies/${id}/demographics`
+        );
     },
 
     getHistoricalMLAs: async (constituencyId: number) => {
-        return await apiFetch<any[]>(`${BASE_URL}/api/constituencies/${constituencyId}/historical-mlas`);
+        const cacheKey = `historical-mlas-${constituencyId}`;
+        return await cachedFetch<any[]>(
+            cacheKey,
+            `${BASE_URL}/api/constituencies/${constituencyId}/historical-mlas`
+        );
     },
 
-    // In apiService.ts
     getBoothDetails: async (boothId: number) => {
+        const cacheKey = `booth-details-${boothId}`;
         try {
-            const response = await fetch(`${BASE_URL}/api/booths/${boothId}`);
-            const result = await response.json();
-
-            if (result.success) {
-                return result.data;
-            }
-            throw new Error('Booth not found');
+            const data = await cachedFetch<any>(
+                cacheKey,
+                `${BASE_URL}/api/booths/${boothId}`
+            );
+            return data;
         } catch (error) {
             console.error('Error fetching booth details:', error);
             throw error;
         }
     },
 
-
-    // Elections
     getElectionResults: async (constituencyId: number, year = 2022): Promise<ElectionResult[]> => {
+        const cacheKey = `election-results-${constituencyId}-${year}`;
         try {
             // Try booth results endpoint first
             const response = await fetch(`${BASE_URL}/api/booths/1/results`);
             const result = await response.json();
 
             if (result.success && result.data) {
-                // Transform the booth results to ElectionResult format
-                return result.data.map((item: any, index: number) => ({
+                const transformedData = result.data.map((item: any, index: number) => ({
                     result_id: index + 1,
                     constituency_id: constituencyId,
                     election_year: year,
@@ -139,10 +187,13 @@ export const apiService = {
                     margin: 0,
                     margin_percentage: 0
                 }));
+
+                apiCache.set(cacheKey, transformedData);
+                return transformedData;
             }
 
-            // Fallback to static data
-            return [
+            // Fallback data
+            const fallbackData = [
                 {
                     result_id: 1,
                     constituency_id: constituencyId,
@@ -174,6 +225,9 @@ export const apiService = {
                     margin_percentage: 0
                 }
             ];
+
+            apiCache.set(cacheKey, fallbackData);
+            return fallbackData;
         } catch (error) {
             console.error("Error fetching election results:", error);
             return [];
@@ -551,24 +605,13 @@ export const apiService = {
             return [];
         }
     },
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+    clearCache: (key?: string) => {
+        if (key) {
+            apiCache.delete(key);
+        } else {
+            apiCache.clear();
+        }
+    }
 };
 
 

@@ -1,5 +1,5 @@
-// src/components/analysis/PollingBoothAnalysis.tsx - COMPLETE UPDATED VERSION
-import { useState, useEffect } from "react";
+// src/components/analysis/PollingBoothAnalysis.tsx - OPTIMIZED
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { Link } from "react-router-dom";
 import {
     Search,
@@ -12,13 +12,15 @@ import {
     Trophy,
     BarChart3,
     RefreshCw,
-    GitCompare
+    GitCompare,
+    Loader2
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
 import { apiService } from "@/services/api";
 import PartyBadge from "@/components/ui/PartyBadge";
 import {
@@ -44,6 +46,7 @@ const PollingBoothAnalysis = ({ constituencyId, constituencyName }: PollingBooth
     const [error, setError] = useState<string | null>(null);
     const [filterParty, setFilterParty] = useState<string>("all");
     const [filterTurnout, setFilterTurnout] = useState<string>("all");
+    const ITEMS_PER_PAGE = 10;
 
     // Helper functions for safe data handling
     const getSafeNumber = (value: any, defaultValue: number = 0): number => {
@@ -62,32 +65,33 @@ const PollingBoothAnalysis = ({ constituencyId, constituencyName }: PollingBooth
         return number.toLocaleString('en-IN');
     };
 
-    const loadData = async () => {
+    const loadData = useCallback(async () => {
         setLoading(true);
         setError(null);
 
         try {
-            // Load both booth analysis and individual booths
-            const [analysis, boothsData] = await Promise.allSettled([
-                apiService.getBoothAnalysis(constituencyId),
-                apiService.getConstituencyBooths(constituencyId, currentPage, 10)
-            ]);
+            // Only load booth analysis (contains booths data)
+            const analysis = await apiService.getBoothAnalysis(constituencyId);
 
-            if (analysis.status === 'fulfilled') {
-                setAnalysisData(analysis.value);
-            } else {
-                setAnalysisData(null);
-            }
+            if (analysis) {
+                setAnalysisData(analysis);
 
-            if (boothsData.status === 'fulfilled') {
-                const data = boothsData.value;
-                setBooths(Array.isArray(data.data) ? data.data : []);
-
-                if (data.meta) {
-                    setTotalPages(getSafeNumber(data.meta.totalPages, 1));
+                // Extract booths from analysis data if available
+                if (analysis.booths && Array.isArray(analysis.booths)) {
+                    setBooths(analysis.booths);
+                    setTotalPages(Math.ceil(analysis.booths.length / ITEMS_PER_PAGE));
+                } else {
+                    // Fallback: load booths separately
+                    const boothsData = await apiService.getConstituencyBooths(constituencyId, currentPage, ITEMS_PER_PAGE);
+                    if (boothsData.data && Array.isArray(boothsData.data)) {
+                        setBooths(boothsData.data);
+                        if (boothsData.meta) {
+                            setTotalPages(getSafeNumber(boothsData.meta.totalPages, 1));
+                        }
+                    }
                 }
             } else {
-                setBooths([]);
+                throw new Error('No data received from API');
             }
 
         } catch (error) {
@@ -98,52 +102,68 @@ const PollingBoothAnalysis = ({ constituencyId, constituencyName }: PollingBooth
         } finally {
             setLoading(false);
         }
-    };
+    }, [constituencyId, currentPage]);
 
     useEffect(() => {
         loadData();
-    }, [constituencyId, currentPage]);
+    }, [loadData]);
 
-    const filteredBooths = booths.filter(booth => {
-        // Search filter
-        if (searchQuery.trim()) {
-            const query = searchQuery.toLowerCase();
-            const boothName = getSafeString(booth.booth_name).toLowerCase();
-            const boothNumber = getSafeString(booth.booth_number).toLowerCase();
-            const winningParty = getSafeString(booth.winning_party).toLowerCase();
+    // Memoized filtered booths
+    const filteredBooths = useMemo(() => {
+        if (!booths || booths.length === 0) return [];
 
-            if (!(
-                boothName.includes(query) ||
-                boothNumber.includes(query) ||
-                winningParty.includes(query)
-            )) {
-                return false;
-            }
-        }
+        return booths
+            .filter(booth => {
+                // Search filter
+                if (searchQuery.trim()) {
+                    const query = searchQuery.toLowerCase();
+                    const boothName = getSafeString(booth.booth_name).toLowerCase();
+                    const boothNumber = getSafeString(booth.booth_number).toLowerCase();
+                    const winningParty = getSafeString(booth.winning_party).toLowerCase();
 
-        // Party filter
-        if (filterParty !== "all" && getSafeString(booth.winning_party) !== filterParty) {
-            return false;
-        }
+                    if (!(
+                        boothName.includes(query) ||
+                        boothNumber.includes(query) ||
+                        winningParty.includes(query)
+                    )) {
+                        return false;
+                    }
+                }
 
-        // Turnout filter
-        if (filterTurnout !== "all") {
-            const turnout = getSafeNumber(booth.turnout_percentage || booth.booth_turnout);
-            switch (filterTurnout) {
-                case "high":
-                    if (turnout < 70) return false;
-                    break;
-                case "medium":
-                    if (turnout < 50 || turnout >= 70) return false;
-                    break;
-                case "low":
-                    if (turnout >= 50) return false;
-                    break;
-            }
-        }
+                // Party filter
+                if (filterParty !== "all" && getSafeString(booth.winning_party) !== filterParty) {
+                    return false;
+                }
 
-        return true;
-    });
+                // Turnout filter
+                if (filterTurnout !== "all") {
+                    const turnout = getSafeNumber(booth.turnout_percentage || booth.booth_turnout);
+                    switch (filterTurnout) {
+                        case "high":
+                            if (turnout < 70) return false;
+                            break;
+                        case "medium":
+                            if (turnout < 50 || turnout >= 70) return false;
+                            break;
+                        case "low":
+                            if (turnout >= 50) return false;
+                            break;
+                    }
+                }
+
+                return true;
+            })
+            .slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
+    }, [booths, searchQuery, filterParty, filterTurnout, currentPage]);
+
+    // Extract unique parties for filter
+    const uniqueParties = useMemo(() => {
+        return Array.from(new Set(
+            booths
+                .map(b => getSafeString(b.winning_party))
+                .filter(party => party && party !== 'undefined' && party !== 'null' && party.trim() !== '')
+        )).sort();
+    }, [booths]);
 
     const getTurnoutBadge = (turnout: any) => {
         const turnoutNum = getSafeNumber(turnout);
@@ -152,18 +172,40 @@ const PollingBoothAnalysis = ({ constituencyId, constituencyName }: PollingBooth
         return <Badge variant="destructive" className="bg-red-100 text-red-800 hover:bg-red-100">Low</Badge>;
     };
 
-    // Extract unique parties for filter
-    const uniqueParties = Array.from(new Set(
-        booths
-            .map(b => getSafeString(b.winning_party))
-            .filter(party => party && party !== 'undefined' && party !== 'null')
-    )).sort();
-
+    // Loading state
     if (loading && booths.length === 0) {
         return (
-            <div className="text-center py-8">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
-                <p className="text-muted-foreground">Loading booth analysis...</p>
+            <div className="space-y-6">
+                {/* Search and Filter Skeleton */}
+                <div className="flex flex-col gap-4">
+                    <Skeleton className="h-10 w-full" />
+                    <div className="flex gap-4">
+                        <Skeleton className="h-10 w-32" />
+                        <Skeleton className="h-10 w-32" />
+                    </div>
+                </div>
+
+                {/* Stats Skeleton */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    {[1, 2, 3, 4].map((i) => (
+                        <Skeleton key={i} className="h-24 rounded-lg" />
+                    ))}
+                </div>
+
+                {/* Table Skeleton */}
+                <Card>
+                    <CardHeader>
+                        <Skeleton className="h-6 w-48" />
+                        <Skeleton className="h-4 w-64" />
+                    </CardHeader>
+                    <CardContent>
+                        <div className="space-y-2">
+                            {[1, 2, 3, 4, 5].map((i) => (
+                                <Skeleton key={i} className="h-12 w-full" />
+                            ))}
+                        </div>
+                    </CardContent>
+                </Card>
             </div>
         );
     }
@@ -198,9 +240,13 @@ const PollingBoothAnalysis = ({ constituencyId, constituencyName }: PollingBooth
                         </div>
                     </div>
                     <div className="flex gap-2">
-                        <Button variant="outline" size="sm" onClick={loadData}>
-                            <RefreshCw className="h-4 w-4 mr-2" />
-                            Refresh
+                        <Button variant="outline" size="sm" onClick={loadData} disabled={loading}>
+                            {loading ? (
+                                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                            ) : (
+                                <RefreshCw className="h-4 w-4 mr-2" />
+                            )}
+                            {loading ? 'Refreshing...' : 'Refresh'}
                         </Button>
                         <Button variant="outline" size="sm">
                             <Download className="h-4 w-4 mr-2" />
@@ -293,52 +339,6 @@ const PollingBoothAnalysis = ({ constituencyId, constituencyName }: PollingBooth
                 </Card>
             </div>
 
-            {/* Party Dominance Summary */}
-            {analysisData?.party_dominance && analysisData.party_dominance.length > 0 && (
-                <Card>
-                    <CardHeader>
-                        <CardTitle>Party Dominance</CardTitle>
-                        <p className="text-sm text-muted-foreground">Parties leading across polling booths</p>
-                    </CardHeader>
-                    <CardContent>
-                        <div className="space-y-4">
-                            {analysisData.party_dominance.slice(0, 5).map((party: any, index: number) => {
-                                const boothsWon = getSafeNumber(party.booths_won);
-                                const totalBooths = getSafeNumber(analysisData?.summary?.total_booths);
-                                const percentage = totalBooths > 0 ? (boothsWon / totalBooths) * 100 : 0;
-
-                                return (
-                                    <div key={getSafeString(party.party_name) + index} className="space-y-2">
-                                        <div className="flex items-center justify-between">
-                                            <div className="flex items-center gap-3">
-                                                <PartyBadge party={getSafeString(party.party_name)} />
-                                                <span className="text-sm text-muted-foreground">
-                                                    {boothsWon} booths
-                                                </span>
-                                            </div>
-                                            <span className="text-sm font-semibold">
-                                                {percentage.toFixed(1)}%
-                                            </span>
-                                        </div>
-                                        <div className="w-full h-3 bg-muted rounded-full overflow-hidden">
-                                            <div
-                                                className="h-full rounded-full"
-                                                style={{
-                                                    width: `${percentage}%`,
-                                                    backgroundColor: index === 0 ? '#10b981' :
-                                                        index === 1 ? '#3b82f6' :
-                                                            index === 2 ? '#f59e0b' : '#6b7280'
-                                                }}
-                                            />
-                                        </div>
-                                    </div>
-                                );
-                            })}
-                        </div>
-                    </CardContent>
-                </Card>
-            )}
-
             {/* Booths Table */}
             <Card>
                 <CardHeader>
@@ -376,7 +376,7 @@ const PollingBoothAnalysis = ({ constituencyId, constituencyName }: PollingBooth
                                             const turnoutNum = getSafeNumber(turnout);
 
                                             return (
-                                                <TableRow key={booth.booth_id || index}>
+                                                <TableRow key={`${booth.booth_id}-${index}`}>
                                                     <TableCell className="font-mono font-medium">
                                                         {getSafeString(booth.booth_number, 'N/A')}
                                                     </TableCell>

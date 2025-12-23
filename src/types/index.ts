@@ -11,6 +11,25 @@ export interface State {
     // Add any other properties your API returns
 }
 
+export interface DemographicData {
+    gender_distribution?: {
+        male: number;
+        female: number;
+        other: number;
+    };
+    caste_distribution?: {
+        sc: number;
+        st: number;
+        obc: number;
+        general: number;
+    };
+    urban_rural?: {
+        urban: number;
+        rural: number;
+    };
+}
+
+
 export interface AssemblyConstituency {
     constituency_id: number;
     constituency_name: string;
